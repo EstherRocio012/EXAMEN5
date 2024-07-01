@@ -1,5 +1,5 @@
-import { Restaurant, Product, RestaurantCategory, ProductCategory } from '../models/models.js'
-
+import { sequelizeSession, Restaurant, Product, RestaurantCategory, ProductCategory, Order } from '../models/models.js'
+import { Op } from 'sequelize'
 const index = async function (req, res) {
   try {
     const restaurants = await Restaurant.findAll(
@@ -28,7 +28,8 @@ const indexOwner = async function (req, res) {
         include: [{
           model: RestaurantCategory,
           as: 'restaurantCategory'
-        }]
+        }],
+        order: [['status', 'ASC'], ['name', 'ASC']]
       })
     res.json(restaurants)
   } catch (err) {
@@ -39,6 +40,12 @@ const indexOwner = async function (req, res) {
 const create = async function (req, res) {
   const newRestaurant = Restaurant.build(req.body)
   newRestaurant.userId = req.user.id // usuario actualmente autenticado
+  if (typeof req.files?.heroImage !== 'undefined') {
+    newRestaurant.heroImage = req.files.heroImage[0].destination + '/' + req.files.heroImage[0].filename
+  }
+  if (typeof req.files?.logo !== 'undefined') {
+    newRestaurant.logo = req.files.logo[0].destination + '/' + req.files.logo[0].filename
+  }
   try {
     const restaurant = await newRestaurant.save()
     res.json(restaurant)
@@ -69,8 +76,14 @@ const show = async function (req, res) {
     res.status(500).send(err)
   }
 }
-
+// Solution
 const update = async function (req, res) {
+  if (typeof req.files?.heroImage !== 'undefined') {
+    req.body.heroImage = req.files.heroImage[0].destination + '/' + req.files.heroImage[0].filename
+  }
+  if (typeof req.files?.logo !== 'undefined') {
+    req.body.logo = req.files.logo[0].destination + '/' + req.files.logo[0].filename
+  }
   try {
     await Restaurant.update(req.body, { where: { id: req.params.restaurantId } })
     const updatedRestaurant = await Restaurant.findByPk(req.params.restaurantId)
@@ -94,6 +107,33 @@ const destroy = async function (req, res) {
     res.status(500).send(err)
   }
 }
+// Solution
+const toggleOnline = async function (req, res) {
+  const t = await sequelizeSession.transaction()
+  try {
+    const restaurant = await Restaurant.findByPk(req.params.restaurantId, { transaction: t })
+    const count = await Order.count({
+      where: {
+        restaurantId: req.params.restaurantId,
+        deliveredAt: { [Op.is]: null }
+      }
+    }, { lock: true, transaction: t })
+    if ((restaurant.status === 'online' || restaurant.status === 'offline') && count === 0) {
+      const newStatus = restaurant.status === 'online' ? 'offline' : 'online'
+      await Restaurant.update(
+        { status: newStatus },
+        { where: { id: req.params.restaurantId } },
+        { transaction: t }
+      )
+    }
+    await t.commit()
+    const updatedRestaurant = await Restaurant.findByPk(req.params.restaurantId)
+    res.json(updatedRestaurant)
+  } catch (err) {
+    await t.rollback()
+    res.status(500).send(err)
+  }
+}
 
 const RestaurantController = {
   index,
@@ -101,6 +141,7 @@ const RestaurantController = {
   create,
   show,
   update,
-  destroy
+  destroy,
+  toggleOnline
 }
 export default RestaurantController

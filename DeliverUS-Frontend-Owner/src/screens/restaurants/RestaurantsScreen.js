@@ -2,7 +2,7 @@
 import React, { useContext, useEffect, useState } from 'react'
 import { StyleSheet, FlatList, Pressable, View } from 'react-native'
 
-import { getAll, remove } from '../../api/RestaurantEndpoints'
+import { getAll, remove, toggleOnline } from '../../api/RestaurantEndpoints'
 import ImageCard from '../../components/ImageCard'
 import TextSemiBold from '../../components/TextSemibold'
 import TextRegular from '../../components/TextRegular'
@@ -17,6 +17,7 @@ export default function RestaurantsScreen ({ navigation, route }) {
   const [restaurants, setRestaurants] = useState([])
   const [restaurantToBeDeleted, setRestaurantToBeDeleted] = useState(null)
   const { loggedInUser } = useContext(AuthorizationContext)
+  const [refresh, setRefresh] = useState(false)
 
   useEffect(() => {
     if (loggedInUser) {
@@ -24,61 +25,103 @@ export default function RestaurantsScreen ({ navigation, route }) {
     } else {
       setRestaurants(null)
     }
-  }, [loggedInUser, route])
+    setRefresh(false)
+  }, [loggedInUser, route, refresh])
 
+  const changeStatus = async (id) => {
+    try {
+      await toggleOnline(id)
+      setRefresh(true)
+    } catch (error) {
+      console.log(error)
+      showMessage({
+        message: `There was an error while trying to toggle status. ${error} `,
+        type: 'error',
+        style: GlobalStyles.flashStyle,
+        titleStyle: GlobalStyles.flashTextStyle
+      })
+    }
+  }
   const renderRestaurant = ({ item }) => {
     return (
       <ImageCard
-        imageUri={item.logo ? { uri: process.env.API_BASE_URL + '/' + item.logo } : restaurantLogo}
-        title={item.name}
-        onPress={() => {
-          navigation.navigate('RestaurantDetailScreen', { id: item.id })
-        }}
-      >
-        <TextRegular numberOfLines={2}>{item.description}</TextRegular>
-        {item.averageServiceMinutes !== null &&
-          <TextSemiBold>Avg. service time: <TextSemiBold textStyle={{ color: GlobalStyles.brandPrimary }}>{item.averageServiceMinutes} min.</TextSemiBold></TextSemiBold>
-        }
-        <TextSemiBold>Shipping: <TextSemiBold textStyle={{ color: GlobalStyles.brandPrimary }}>{item.shippingCosts.toFixed(2)}€</TextSemiBold></TextSemiBold>
-        <View style={styles.actionButtonsContainer}>
-          <Pressable
-            onPress={() => navigation.navigate('EditRestaurantScreen', { id: item.id })
-            }
-            style={({ pressed }) => [
-              {
-                backgroundColor: pressed
-                  ? GlobalStyles.brandBlueTap
-                  : GlobalStyles.brandBlue
-              },
-              styles.actionButton
-            ]}>
-          <View style={[{ flex: 1, flexDirection: 'row', justifyContent: 'center' }]}>
-            <MaterialCommunityIcons name='pencil' color={'white'} size={20}/>
-            <TextRegular textStyle={styles.text}>
-              Edit
-            </TextRegular>
-          </View>
-        </Pressable>
-
+      imageUri={item.logo ? { uri: process.env.API_BASE_URL + '/' + item.logo } : restaurantLogo}
+      title={item.name}
+      onPress={() => {
+        navigation.navigate('RestaurantDetailScreen', { id: item.id })
+      }}
+    >
+      <TextRegular numberOfLines={4}>{item.description}</TextRegular>
+      {item.averageServiceMinutes !== null &&
+        <TextSemiBold>Avg. service time: <TextSemiBold textStyle={{ color: GlobalStyles.brandPrimary }}>{item.averageServiceMinutes} min.</TextSemiBold></TextSemiBold>
+      }
+      {
+        <TextSemiBold>This restaurant is <TextSemiBold textStyle={{ color: GlobalStyles.brandPrimary }}>{item.status}</TextSemiBold></TextSemiBold>
+      }
+      <TextSemiBold>Shipping: <TextSemiBold textStyle={{ color: GlobalStyles.brandPrimary }}>{item.shippingCosts.toFixed(2)}€</TextSemiBold></TextSemiBold>
+      <View style={styles.actionButtonsContainer}>
         <Pressable
-            onPress={() => { setRestaurantToBeDeleted(item) }}
-            style={({ pressed }) => [
-              {
-                backgroundColor: pressed
-                  ? GlobalStyles.brandPrimaryTap
-                  : GlobalStyles.brandPrimary
-              },
-              styles.actionButton
-            ]}>
-          <View style={[{ flex: 1, flexDirection: 'row', justifyContent: 'center' }]}>
-            <MaterialCommunityIcons name='delete' color={'white'} size={20}/>
-            <TextRegular textStyle={styles.text}>
-              Delete
-            </TextRegular>
-          </View>
-        </Pressable>
+          onPress={() => navigation.navigate('EditRestaurantScreen', { id: item.id })
+          }
+          style={({ pressed }) => [
+            {
+              backgroundColor: pressed
+                ? GlobalStyles.brandBlueTap
+                : GlobalStyles.brandBlue
+            },
+            styles.actionButton
+          ]}>
+        <View style={[{ flex: 1, flexDirection: 'row', justifyContent: 'center' }]}>
+          <MaterialCommunityIcons name='pencil' color={'white'} size={20}/>
+          <TextRegular textStyle={styles.text}>
+            Edit
+          </TextRegular>
         </View>
-      </ImageCard>
+      </Pressable>
+
+      <Pressable
+          onPress={() => { setRestaurantToBeDeleted(item) }}
+          style={({ pressed }) => [
+            {
+              backgroundColor: pressed
+                ? GlobalStyles.brandPrimaryTap
+                : GlobalStyles.brandPrimary
+            },
+            styles.actionButton
+          ]}>
+        <View style={[{ flex: 1, flexDirection: 'row', justifyContent: 'center' }]}>
+          <MaterialCommunityIcons name='delete' color={'white'} size={20}/>
+          <TextRegular textStyle={styles.text}>
+            Delete
+          </TextRegular>
+        </View>
+      </Pressable>
+      { (item.status === 'online' || item.status === 'offline') &&
+      <Pressable
+          onPress={() => {
+            changeStatus(item.id)
+          }}
+          style={({ pressed }) => [
+            {
+              backgroundColor: pressed
+                ? GlobalStyles.brandSuccessTap
+                : GlobalStyles.brandSuccessDisabled
+            },
+            styles.actionButton
+          ]}>
+        <View style={[{ flex: 1, flexDirection: 'row', justifyContent: 'center' }]}>
+          <MaterialCommunityIcons name='update' color={'white'} size={20}/>
+          <TextRegular textStyle={styles.text}>
+            {item.status !== 'online' ? 'online' : 'offline'}
+          </TextRegular>
+
+        </View>
+      </Pressable>
+
+      }
+      </View>
+
+    </ImageCard>
     )
   }
 
@@ -195,7 +238,7 @@ const styles = StyleSheet.create({
     padding: 10,
     alignSelf: 'center',
     flexDirection: 'column',
-    width: '50%'
+    width: '33%'
   },
   actionButtonsContainer: {
     flexDirection: 'row',

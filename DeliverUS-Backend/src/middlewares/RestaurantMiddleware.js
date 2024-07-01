@@ -1,5 +1,5 @@
 import { Restaurant, Order } from '../models/models.js'
-
+import { Op } from 'sequelize'
 const checkRestaurantOwnership = async (req, res, next) => {
   try {
     const restaurant = await Restaurant.findByPk(req.params.restaurantId)
@@ -25,4 +25,23 @@ const restaurantHasNoOrders = async (req, res, next) => {
   }
 }
 
-export { checkRestaurantOwnership, restaurantHasNoOrders }
+// Solution
+const checkValidStatusChange = async (req, res, next) => {
+  try {
+    const restaurant = await Restaurant.findByPk(req.params.restaurantId)
+    const count = await Order.count({
+      where: {
+        restaurantId: req.params.restaurantId,
+        deliveredAt: { [Op.is]: null }
+      }
+    })
+    if ((restaurant.status === 'online' || restaurant.status === 'offline') && count === 0) {
+      return next()
+    }
+    return res.status(403).send('Not valid status change. This entity is closed or temporaly closed or has incomplete orders (not deliverAt valid value).')
+  } catch (err) {
+    return res.status(500).send(err)
+  }
+}
+
+export { checkRestaurantOwnership, restaurantHasNoOrders, checkValidStatusChange }
